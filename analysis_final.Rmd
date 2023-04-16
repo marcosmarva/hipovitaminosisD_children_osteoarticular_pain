@@ -1,0 +1,626 @@
+---
+title: "HIPOVITAMINOSIS D AND IRON DEFICIENCY IN CHILDREN, A NEW APPROACH TO ITS UNEXPLAINED RELATIONSHIP WITH OSTEOARTICULAR PAIN"
+author: "María Amelia Muñoz Calonge, Marcos Marvá Ruiz, David Varillas Delgado, José Jiménez Martínez and Manuel Rodríguez Zapata"
+date: '2023-04-13'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document gathers the code we used to the statistical analysis of the data presented in the above referred mauscript.
+
+
+### Data reading
+```{r}
+rm(list = ls())
+
+cases = read.table(file = "cases_ms.csv", header = T, dec = ".", sep = ";")
+
+controls = read.table(file = "controls_ms.csv", header = T, dec = ".", sep = ";")
+```
+
+### Data exploration
+
+We first plot scatterplots and boxplots for each variable and patient group.
+
+```{r, fig.align='center', fig.height=5, fig.width=9}
+par(mfrow = c(1,3), mar = c(4, 3, 1, 0), cex.axis = 1.5, cex.main = 1.5)
+
+## diagram, VITAMIN D in groups C0, C1 and C2
+dfVit = data.frame(vitD = c(cases$vitaminD, cases$vitaminD2, controls$vitaminD), 
+                   group = c(rep("C1", length(cases$vitaminD)), 
+                             rep("C2", length(cases$vitaminD2)), 
+                             rep("C0", length(controls$vitaminD)))
+) 
+boxplot(dfVit$vitD ~ dfVit$group, horizontal = T, main = "Vitamin D", 
+        xlab = "ng/ml", ylab = "")
+stripchart(dfVit$vitD ~ dfVit$group, pch = c(15, 16, 17), add = T,
+           col = gray.colors(3, start = 0.1, end = 0.55, gamma = 3.2, 
+                             rev = TRUE), cex = 1.5,
+           method = "jitter", xlim=c(0,max(dfVit$vitD)+1), 
+           main = "Vitamin D")
+
+# lines indicating vitamin D severe deficiency and vitamin D deficiency, respectively
+abline(v = c(20,30), lty = 3)
+
+
+
+## diagram, IRON in groups C0, C1 and C2
+dfIron = data.frame(Iron = c(cases$iron, cases$iron2, controls$iron), 
+                    group = c(rep("C1", length(cases$iron)), 
+                              rep("C2", length(cases$iron2)), 
+                              rep("C0", length(controls$iron)))
+) 
+boxplot(dfIron$Iron ~ dfIron$group, horizontal = T, main = "Iron", 
+        xlab = "mcg/dl", ylab = "")
+stripchart(dfIron$Iron ~ dfIron$group, pch = c(15, 16, 17), add = T,
+           col = gray.colors(3, start = 0.1, end = 0.55, gamma = 3.2, 
+                             rev = TRUE), cex = 1.5,
+           method = "jitter", xlim=c(0,max(dfIron$Iron)+1), 
+           main = "Iron values")
+
+# line indicating iron deficiency
+abline(v = c(50), lty = 3)
+
+
+## diagram, FERRITIN in groups C0, C1 and C2
+dfFerr = data.frame(Ferr = c(cases$ferritin, cases$ferritin2, controls$ferritin), 
+                    group = c(rep("C1", length(cases$ferritin)), 
+                              rep("C2", length(cases$ferritin2)), 
+                              rep("C0", length(controls$ferritin)))
+) 
+
+
+boxplot(dfFerr$Ferr ~ dfFerr$group, horizontal = T, main = "Ferritin", 
+        xlab = "ng/ml", ylab = "")
+stripchart(dfFerr$Ferr ~ dfFerr$group, pch = c(15, 16, 17), add = T,
+           col = gray.colors(3, start = 0.1, end = 0.55, gamma = 3.2, 
+                             rev = TRUE), cex = 1.5,
+           method = "jitter", xlim=c(0,max(dfIron$Iron)+1), 
+           main = "Ferritin values")
+
+# line indicating ferritin deficiency
+abline(v = c(20), lty = 3)
+par(mfrow = c(1,1))
+```
+
+
+
+There are unusually large values for `vitamin D` and `ferritin` in group C2. We next check whether these values belong to the same individual.
+
+
+```{r}
+which.max(cases$vitaminD2)
+which.max(cases$ferritin2)
+```
+
+It is not the same individual. 
+
+
+We check also whether these values are strong outliers. That is to say, whether they are beyond three times the IQR from the third quartile.
+```{r}
+# VITAMIN D, GROUP C2
+max(cases$vitaminD2)
+unname(quantile(cases$vitaminD2, probs = 0.75)+3*IQR(cases$vitaminD2))
+```
+Yes, it is a strong outlier. 
+
+```{r}
+# FERRITIN, GROUP C1
+max(cases$ferritin)
+quantile(cases$ferritin, probs = 0.75)+3*IQR(cases$ferritin)
+```
+
+No, it is not a strong outlier.
+
+```{r}
+# GROUP C2
+max(cases$ferritin2)
+quantile(cases$ferritin2, probs = 0.75)+3*IQR(cases$ferritin2)
+```
+
+No, it is not a strong outlier.
+
+
+We thus remove just the strong outlier for Vitamin D in group C2 as it may affect the mean value due to the small sample size:
+
+```{r}
+cases_VitD = cases[ cases$vitaminD2 != max(cases$vitaminD2), 
+                       c("vitaminD", "vitaminD2", "weight", "age")]
+```
+**NOTE** that, from now on  the sample size of groups C1 and C2 is 19 for `vitamin D`, and 20 for `iron` and `ferritin`.
+
+
+
+### Dealing with potential confounders: age and weight
+Note that `age` ranges from 3 to 17 years 
+```{r}
+range(c(cases$age, controls$age))
+```
+and `weight` from 10 to 69 kilograms
+```{r}
+range(c(cases$weight, controls$weight), na.rm = T)
+```
+To prevent confounder variables we analysed the possible association of `vitamin D`, `iron` and `ferritin` to the variables `age` or `weight` by testing H0: _"the slope of the regression line = 0 for each group and variable"_. Let us recall that if the linear assumptions are met (see below),
+\[\Xi = \dfrac{b_1-\beta_1}{\sqrt{\dfrac{MEC}{(n-2)s^2(x)}}} \sim t_{n-2}\]
+where $\beta_1$ is the slope of the linear model $y = \beta_0+\beta_1 x +\varepsilon$ and $b_1$ is its estimate, and $n$ is the sample size.
+
+The following function calculates the value of $\Xi$ under the hypothesis $\beta_1=0$
+
+```{r}
+slopeRtest = function(x, y){ 
+  # remove NAs
+  not.na <- (!is.na(x))*(!is.na(y))
+  x = x[which(not.na == 1)]
+  y = y[which(not.na == 1)]
+  
+  # calculate regression line
+  lmXY = lm(y ~ x)
+  
+  # calculate the statistic
+  xi = unname(lmXY$coefficients[2])/( sum((lmXY$fitted.values - y)^2)/((length(x)-2)*var(x)))
+  
+  # calculate p-value
+  min(2*pt(xi, df = length(x)-2), 
+      2*pt(xi, df = length(x)-2, lower.tail = F)
+      )
+}
+```
+
+We next display the scatterplot along with the regression line, calculate the 95% confidence interval for $\beta_1$ (we use the `smatr` package ) and test $H_0:\,\it{\beta_1=0}$ (with the above defined function) for age, weight versus `vitamin D`, `iron` and `ferritin` for each group C0, C1 and C2.
+
+
+
+In what follows,  `lm_XXX_y_z` refers to the linear model of variables `XXX`  over `y` in group `Cz`.
+
+
+##### Vitamin D
+Let us recall that we removed an strong outlier from groups C1 and C2 when dealing with `vitamin D`.
+
+
+
+**Age**
+```{r, fig.align='center', fig.width=9, fig.height=2}
+lm_VitD_a_0 = lm(controls$vitaminD ~ controls$age)
+lm_VitD_a_1 = lm(cases_VitD$vitaminD ~ cases_VitD$age)
+lm_VitD_a_2 = lm(cases_VitD$vitaminD2 ~ cases_VitD$age)
+
+par(mfrow = c(1,3))
+plot(controls$age, controls$vitaminD, pch = 19, 
+     xlab = "age", ylab = "Vitamin D", main = "C0")
+abline(lm_VitD_a_0, col = "red", lwd = 1.5)
+
+plot(cases_VitD$age, cases_VitD$vitaminD, pch = 19, 
+     xlab = "age", ylab = "Vitamin D", main = "C1")
+abline(lm_VitD_a_1, col = "red", lwd = 1.5)
+
+plot(cases_VitD$age, cases_VitD$vitaminD2, pch = 19, 
+     xlab = "age", ylab = "Vitamin D", main = "C0")
+abline(lm_VitD_a_2, col = "red", lwd = 1.5)
+par(mfrow = c(1,1))
+```
+
+```{r}
+library(smatr)
+confint(lm_VitD_a_0)[2, ]
+slopeRtest(controls$age, controls$vitaminD)
+
+confint(lm_VitD_a_1)[2, ]
+slopeRtest(cases_VitD$age, cases_VitD$vitaminD)
+
+confint(lm_VitD_a_2)[2, ]
+slopeRtest(cases_VitD$age, cases_VitD$vitaminD2)
+```
+
+**Weight**
+```{r, fig.align='center', fig.width=9, fig.height=2}
+lm_VitD_w_0 = lm(controls$vitaminD ~ controls$weight)
+lm_VitD_w_1 = lm(cases_VitD$vitaminD ~ cases_VitD$weight)
+lm_VitD_w_2 = lm(cases_VitD$vitaminD2 ~ cases_VitD$weight)
+
+par(mfrow = c(1,3))
+plot(controls$weight, controls$vitaminD, pch = 19, 
+     xlab = "weight", ylab = "Vitamin D", main = "C0")
+abline(lm_VitD_w_0, col = "red", lwd = 1.5)
+
+plot(cases_VitD$weight, cases_VitD$vitaminD, pch = 19, 
+     xlab = "weight", ylab = "Vitamin D", main = "C1")
+abline(lm_VitD_w_1, col = "red", lwd = 1.5)
+
+plot(cases_VitD$weight, cases_VitD$vitaminD2, pch = 19, 
+     xlab = "weight", ylab = "Vitamin D", main = "C0")
+abline(lm_VitD_w_2, col = "red", lwd = 1.5)
+par(mfrow = c(1,1))
+```
+
+```{r}
+library(smatr)
+confint(lm_VitD_w_0)[2, ]
+slopeRtest(controls$weight, controls$vitaminD)
+
+confint(lm_VitD_w_1)[2, ]
+slopeRtest(cases_VitD$weight, cases_VitD$vitaminD)
+
+confint(lm_VitD_w_2)[2, ]
+slopeRtest(cases_VitD$weight, cases_VitD$vitaminD2)
+```
+
+
+##### `iron`
+
+**`age``**
+```{r, fig.align='center', fig.width=9, fig.height=2}
+lm_iron_a_0 = lm(controls$iron ~ controls$age)
+lm_iron_a_1 = lm(cases$iron ~ cases$age)
+lm_iron_a_2 = lm(cases$iron2 ~ cases$age)
+
+par(mfrow = c(1,3))
+plot(controls$age, controls$iron, pch = 19, 
+     xlab = "age", ylab = "Iron", main = "C0")
+abline(lm_iron_a_0, col = "red", lwd = 1.5)
+
+plot(cases$age, cases$iron, pch = 19, 
+     xlab = "age", ylab = "Iron", main = "C1")
+abline(lm_iron_a_1, col = "red", lwd = 1.5)
+
+plot(cases$age, cases$iron2, pch = 19, 
+     xlab = "age", ylab = "Iron", main = "C0")
+abline(lm_VitD_a_2, col = "red", lwd = 1.5)
+par(mfrow = c(1,1))
+```
+
+```{r}
+library(smatr)
+confint(lm_iron_a_0)[2, ]
+slopeRtest(controls$age, controls$iron)
+
+confint(lm_iron_a_1)[2, ]
+slopeRtest(cases$age, cases$iron)
+
+confint(lm_iron_a_2)[2, ]
+slopeRtest(cases$age, cases$iron2)
+```
+
+**`weight`**
+```{r, fig.align='center', fig.width=9, fig.height=2}
+lm_iron_w_0 = lm(controls$iron ~ controls$weight)
+lm_iron_w_1 = lm(cases$iron ~ cases$weight)
+lm_iron_w_2 = lm(cases$iron2 ~ cases$weight)
+
+par(mfrow = c(1,3))
+plot(controls$weight, controls$iron, pch = 19, 
+     xlab = "weight", ylab = "Iron", main = "C0")
+abline(lm_iron_w_0, col = "red", lwd = 1.5)
+
+plot(cases$weight, cases$iron, pch = 19, 
+     xlab = "weight", ylab = "Iron", main = "C1")
+abline(lm_iron_w_1, col = "red", lwd = 1.5)
+
+plot(cases$weight, cases$iron2, pch = 19, 
+     xlab = "weight", ylab = "Iron", main = "C0")
+abline(lm_iron_w_2, col = "red", lwd = 1.5)
+par(mfrow = c(1,1))
+```
+
+```{r}
+library(smatr)
+confint(lm_iron_w_0)[2, ]
+slopeRtest(controls$weight, controls$iron)
+
+confint(lm_iron_w_1)[2, ]
+slopeRtest(cases$weight, cases$iron)
+
+confint(lm_iron_w_2)[2, ]
+slopeRtest(cases$weight, cases$iron2)
+```
+
+
+
+
+##### `ferritin`
+
+**`age`**
+```{r, fig.align='center', fig.width=9, fig.height=2}
+lm_ferritin_a_0 = lm(controls$ferritin ~ controls$age)
+lm_ferritin_a_1 = lm(cases$ferritin ~ cases$age)
+lm_ferritin_a_2 = lm(cases$ferritin2 ~ cases$age)
+
+par(mfrow = c(1,3))
+plot(controls$age, controls$ferritin, pch = 19, 
+     xlab = "age", ylab = "ferritin", main = "C0")
+abline(lm_ferritin_a_0, col = "red", lwd = 1.5)
+
+plot(cases$age, cases$ferritin, pch = 19, 
+     xlab = "age", ylab = "ferritin", main = "C1")
+abline(lm_ferritin_a_1, col = "red", lwd = 1.5)
+
+plot(cases$age, cases$ferritin2, pch = 19, 
+     xlab = "age", ylab = "ferritin", main = "C0")
+abline(lm_VitD_a_2, col = "red", lwd = 1.5)
+par(mfrow = c(1,1))
+```
+
+```{r}
+library(smatr)
+confint(lm_ferritin_a_0)[2, ]
+slopeRtest(controls$age, controls$ferritin)
+
+confint(lm_ferritin_a_1)[2, ]
+slopeRtest(cases$age, cases$ferritin)
+
+confint(lm_ferritin_a_2)[2, ]
+slopeRtest(cases$age, cases$ferritin2)
+```
+
+**`weight`**
+```{r, fig.align='center', fig.width=9, fig.height=2}
+lm_ferritin_w_0 = lm(controls$ferritin ~ controls$weight)
+lm_ferritin_w_1 = lm(cases$ferritin ~ cases$weight)
+lm_ferritin_w_2 = lm(cases$ferritin2 ~ cases$weight)
+
+par(mfrow = c(1,3))
+plot(controls$weight, controls$ferritin, pch = 19, 
+     xlab = "weight", ylab = "ferritin", main = "C0")
+abline(lm_ferritin_w_0, col = "red", lwd = 1.5)
+
+plot(cases$weight, cases$ferritin, pch = 19, 
+     xlab = "weight", ylab = "ferritin", main = "C1")
+abline(lm_ferritin_w_1, col = "red", lwd = 1.5)
+
+plot(cases$weight, cases$ferritin2, pch = 19, 
+     xlab = "weight", ylab = "ferritin", main = "C0")
+abline(lm_ferritin_w_2, col = "red", lwd = 1.5)
+par(mfrow = c(1,1))
+```
+
+```{r}
+library(smatr)
+confint(lm_ferritin_w_0)[2, ]
+slopeRtest(controls$weight, controls$ferritin)
+
+confint(lm_ferritin_w_1)[2, ]
+slopeRtest(cases$weight, cases$ferritin)
+
+confint(lm_ferritin_w_2)[2, ]
+slopeRtest(cases$weight, cases$ferritin2)
+```
+
+
+#### Linear model assumptions
+
+We use the `gvlma` package to assess residuals normality (skewness and kurtosis) and homocedasticity. The linear model assumptions are met in all of them but in few cases. When not met, either the p-value is close to 0.05, or only one of the normality assumptions is violated (recall that linear models are robust in front of loss of normality).
+
+##### Vitamin D
+
+```{r}
+library(gvlma)
+gvlma(lm_VitD_a_0)
+gvlma(lm_VitD_a_1)
+gvlma(lm_VitD_a_2)
+
+gvlma(lm_VitD_w_0)
+gvlma(lm_VitD_w_1)
+gvlma(lm_VitD_w_2)
+```
+
+##### `iron`
+```{r}
+library(gvlma)
+gvlma(lm_iron_a_0)
+gvlma(lm_iron_a_1)
+gvlma(lm_iron_a_2)
+
+gvlma(lm_iron_w_0)
+gvlma(lm_iron_w_1)
+gvlma(lm_iron_w_2)
+```
+
+##### `ferritin`
+```{r}
+library(gvlma)
+gvlma(lm_ferritin_a_0)
+gvlma(lm_ferritin_a_1)
+gvlma(lm_ferritin_a_2)
+
+gvlma(lm_ferritin_w_0)
+gvlma(lm_ferritin_w_1)
+gvlma(lm_ferritin_w_2)
+```
+
+#### Normality of the variables
+Cases (groups C1 and C2) are quite a little (19 or 20 individuals) so that normality must be checked to decide whether to apply a parametric test (`t.test`) or a non-parametric test (`wilcox_test` from the `coin` R package).
+
+```{r}
+# VITAMIN D
+# C0
+shapiro.test(controls$vitaminD)
+library(nortest)
+lillie.test(controls$vitaminD)
+
+# C1
+shapiro.test(cases_VitD$vitaminD)
+lillie.test(cases_VitD$vitaminD)
+
+# C2
+shapiro.test(cases_VitD$vitaminD2)
+lillie.test(cases_VitD$vitaminD2)
+```
+Normality is reached for groups C0 and C1, but not for group C2 though the p-value is very close to the significance level. 
+
+Looking at the scatter plot
+
+```{r, fig.align='center', fig.height=3}
+boxplot(cases_VitD$vitaminD2)
+# include ptos
+3*IQR(cases_VitD$vitaminD2)+quantile(cases_VitD$vitaminD2, probs = .75)
+max(cases_VitD$vitaminD2)
+```
+the outlier is not a strong outlier, but removing it we would reach normality. Thus,  taking into account this fact, along with the fact that normality is almost reached (see above) we consider that the normality assumption is fulfilled.
+
+```{r, fig.align='center', fig.height=3}
+shapiro.test(cases_VitD$vitaminD2[cases_VitD$vitaminD2!= max(cases_VitD$vitaminD2)])
+lillie.test(cases_VitD$vitaminD2[cases_VitD$vitaminD2!= max(cases_VitD$vitaminD2)])
+```
+
+
+
+```{r, fig.align='center', fig.height=3}
+##############################
+# IRON
+# C0
+shapiro.test(controls$iron)
+lillie.test(controls$iron)
+
+# C1
+shapiro.test(cases$iron)
+lillie.test(cases$iron)
+
+# C2
+shapiro.test(cases$iron2)
+lillie.test(cases$iron2)
+```
+
+
+```{r, fig.align='center', fig.height=3}
+##############################
+# FERRITIN
+# C0
+shapiro.test(controls$ferritin)
+lillie.test(controls$ferritin)
+
+# C1
+shapiro.test(cases$ferritin)
+lillie.test(cases$ferritin)
+
+# C2
+shapiro.test(cases$ferritin2)
+shapiro.test(cases$ferritin2[cases$ferritin2 != max(cases$ferritin2)])
+lillie.test(cases$ferritin2)
+```
+
+
+
+## Calculations leading to Table 4 in the manuscript
+### Compare `vitamin D`, `iron` and `ferritin` between groups C1 and C0
+
+
+```{r}
+#################################################
+# VITAMIN D C1 vs C0
+(vt = var.test(cases_VitD$vitaminD, controls$vitaminD, alternative = "two.sided"))
+t.test(cases_VitD$vitaminD, controls$vitaminD, alternative = "less", var.equal = F)
+
+mean(cases_VitD$vitaminD)
+sd(cases_VitD$vitaminD)
+
+mean(controls$vitaminD)
+sd(controls$vitaminD)
+
+
+# IRON C1 vs C0
+var.test(cases$iron, controls$iron, alternative = "two.sided")
+t.test(cases$iron, controls$iron, alternative = "less", var.equal = T)
+
+mean(cases$iron)
+sd(cases$iron)
+
+mean(controls$iron)
+sd(controls$iron)
+
+
+# FERRITIN C1 vs C0
+library(coin)
+df10_ferr = data.frame(ferritin = c(cases$ferritin, controls$ferritin), 
+                       group = as.factor(c(rep("C1", length(cases$ferritin)), 
+                                 rep("C0", length(controls$ferritin))))
+                       )
+wilcox_test(ferritin ~ group, data = df10_ferr, distribution = "exact", conf.int = T, alternative = "less")
+mean(cases$ferritin)
+sd(cases$ferritin)
+
+mean(controls$ferritin)
+sd(controls$ferritin)
+```
+
+
+
+## Calculations leading to Table 5 in the manuscript
+### Compare Vitamin D, `iron` and Ferrtin between groups C2 and C1
+```{r}
+# VITAMIN D C1 vs C2
+var.test(cases_VitD$vitaminD2, cases_VitD$vitaminD, alternative = "two.sided")
+t.test(cases_VitD$vitaminD2, cases_VitD$vitaminD, alternative = "greater", var.equal = F, paired = T)
+
+library(coin)
+df = stack(cases_VitD[, c("vitaminD2", "vitaminD")])[, c(2,1)]
+wilcox_test(values ~ ind, data = df, distribution = "exact", conf.int = T)
+
+df = stack(cases[, c("vitaminD2", "vitaminD")])[ , c(2,1)]
+wilcox_test(values ~ ind, data = df, distribution = "exact", conf.int = T)
+
+mean(cases_VitD$vitaminD)
+sd(cases_VitD$vitaminD)
+
+mean(cases_VitD$vitaminD2)
+sd(cases_VitD$vitaminD2)
+
+
+# IRON C2 vs C1
+var.test(cases$iron2, cases$iron, alternative = "two.sided")
+t.test(cases$iron2, cases$iron, paired = TRUE, alternative = "greater", var.equal = F)
+
+mean(cases$iron)
+sd(cases$iron)
+
+mean(cases$iron2)
+sd(cases$iron2)
+
+
+# FERRITIN
+# C2 vs C1
+var.test(cases$ferritin2, cases$ferritin, alternative = "two.sided")
+t.test(cases$ferritin2, cases$ferritin, paired = TRUE, alternative = "less", var.equal = T)
+
+mean(cases$ferritin)
+sd(cases$ferritin)
+
+mean(cases$ferritin2)
+sd(cases$ferritin2)
+```
+
+
+## Calculations leading to Table 6 in the manuscript
+### Compare Vitamin D, `iron` and Ferrtin between groups C2 and C0
+```{r}
+# VITAMIN D C2 vs C0
+var.test(cases_VitD$vitaminD2, controls$vitaminD, alternative = "two.sided")
+t.test(cases_VitD$vitaminD2, controls$vitaminD, alternative = "two.sided", var.equal = F)
+
+
+# IRON C2 vs C0
+var.test(cases$iron2, controls$iron, alternative = "two.sided")
+t.test(cases$iron2, controls$iron, alternative = "two.sided", var.equal = T)
+mean(cases$iron2)
+sd(cases$iron2)
+
+mean(controls$iron)
+sd(controls$iron)
+
+
+# FERRITIN C2 vs C0
+df02_ferr = data.frame(ferritin = c(cases$ferritin2, controls$ferritin), 
+                       group = as.factor(c(rep("C2", length(cases$ferritin2)), rep("C0", length(controls$ferritin))))
+                       )
+wilcox_test(ferritin ~ group, data = df10_ferr, distribution = "exact", conf.int = T, alternative = "two.sided")
+
+mean(cases$ferritin2)
+sd(cases$ferritin2)
+
+mean(controls$ferritin)
+sd(controls$ferritin)
+```
+
+
+

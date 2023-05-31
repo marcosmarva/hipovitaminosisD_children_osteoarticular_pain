@@ -1,7 +1,7 @@
 ---
 title: "HIPOVITAMINOSIS D AND IRON DEFICIENCY IN CHILDREN, A NEW APPROACH TO ITS UNEXPLAINED RELATIONSHIP WITH OSTEOARTICULAR PAIN"
 author: "María Amelia Muñoz Calonge, Marcos Marvá Ruiz, David Varillas Delgado, José Jiménez Martínez and Manuel Rodríguez Zapata"
-date: '2023-04-13'
+date: '2023-05-22nd'
 output: html_document
 ---
 
@@ -9,21 +9,101 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-This document gathers the code we used to the statistical analysis of the data presented in the above referred mauscript.
+This document gathers the code we used to the statistical analysis of the data presented in the above referred manuscript.
+
+
 
 
 ### Data reading
 ```{r}
 rm(list = ls())
 
-cases = read.table(file = "cases_ms.csv", header = T, dec = ".", sep = ";")
+dfcase0 = read.table(file = "cases_ms.csv", header = T, dec = ".", sep = ";")
 
-controls = read.table(file = "controls_ms.csv", header = T, dec = ".", sep = ";")
+dfcontrol0 = read.table(file = "controls_ms.csv", header = T, dec = ".", sep = ";")
 ```
+
+
+### Controls:
+ 
+ * 2 with no analiticals
+ * 1 with no age
+ * one empty line
+ * one with iron < 10, I have set 7
+
+
+### Setting baseline values
+
+We first calculate the baseline values for `iron`, `ferritin` and `vitamin D` for both the case and control group. Note that
+
+ * Not all the variables have been  measured in all the individuals because of occasional failures in the laboratory. 
+ * Not all the individuals in the case group attended the second call and made the second blood test.
+ 
+Thus: 
+
+ * We use all the available data to set the baseline value of each variable for each group (case and control). We perform a t test to get a 95% confidence interval for the mean value.
+ * Once the baseline values are set, we carry in analysing those case individuals that attended twice to the doctor.
+
+
+
+#### Case group baseline values
+
+We set the baseline value of each variable by calculating the corresponding confidence interval with the case individuals
+
+```{r}
+t.test(dfcase0$vitaminD, mu = 30, alternative = "two.sided", na.action(dfcase0$vitaminD))
+
+t.test(dfcase0$iron, mu = 30, alternative = "two.sided",na.action(dfcase0$iron))
+
+t.test(dfcase0$ferritin, mu = 30, alternative = "two.sided",na.action(dfcase0$ferritin))
+```
+
+
+
+
+Note that the case group 95% confidence interval for the mean value of `vitamin D` is below the threshold value 30 (deficiency).
+
+
+#### Control group baseline values
+
+```{r}
+t.test(dfcontrol0$vitaminD, mu = 30, alternative = "two.sided", na.action(dfcontrol0$vitaminD))
+
+t.test(dfcontrol0$iron, mu = 30, alternative = "two.sided",na.action(dfcontrol0$iron))
+
+t.test(dfcontrol0$ferritin, mu = 30, alternative = "two.sided",na.action(dfcontrol0$ferritin))
+```
+
+
+
+
+### Data cleaning
+
+We carry on by removing from the case group those individuals that did not complete the follow up 
+ 
+```{r}
+cases_complete = which(!is.na(dfcase0$iron2) & !is.na(dfcase0$ferritin2) &  !is.na(dfcase0$vitaminD2))
+cases = dfcase0[cases_complete , ]
+```
+
+
+There are also individuals in the case group with no blood test records 
+
+```{r}
+dfcontrol0[is.na(dfcontrol0$vitaminD) , ]
+```
+
+that we, obviously, remove
+
+```{r}
+controls = dfcontrol0[!is.na(dfcontrol0$vitaminD), ]
+```
+
+
 
 ### Data exploration
 
-We first plot scatterplots and boxplots for each variable and patient group.
+We first plot scatter plots and box plots for each variable and patient group.
 
 ```{r, fig.align='center', fig.height=5, fig.width=9}
 par(mfrow = c(1,3), mar = c(4, 3, 1, 0), cex.axis = 1.5, cex.main = 1.5)
@@ -124,26 +204,29 @@ quantile(cases$ferritin2, probs = 0.75)+3*IQR(cases$ferritin2)
 No, it is not a strong outlier.
 
 
-We thus remove just the strong outlier for Vitamin D in group C2 as it may affect the mean value due to the small sample size:
+We decide do not remove the strong outlier for Vitamin D in group C2 even if it may affect the mean value due to the small sample size. When necessary, we will check results considering and not considering the strong outlier in order to assess its potential impact:
 
 ```{r}
-cases_VitD = cases[ cases$vitaminD2 != max(cases$vitaminD2), 
-                       c("vitaminD", "vitaminD2", "weight", "age")]
+cases_VitD = cases[ #cases$vitaminD2 != max(cases$vitaminD2)
+                    , c("vitaminD", "vitaminD2", "weight", "age")]
 ```
-**NOTE** that, from now on  the sample size of groups C1 and C2 is 19 for `vitamin D`, and 20 for `iron` and `ferritin`.
+
 
 
 
 ### Dealing with potential confounders: age and weight
-Note that `age` ranges from 3 to 17 years 
+Note that `age` ranges from 2 to 13 years 
+
 ```{r}
 range(c(cases$age, controls$age))
 ```
+
 and `weight` from 10 to 69 kilograms
+
 ```{r}
 range(c(cases$weight, controls$weight), na.rm = T)
 ```
-To prevent confounder variables we analysed the possible association of `vitamin D`, `iron` and `ferritin` to the variables `age` or `weight` by testing H0: _"the slope of the regression line = 0 for each group and variable"_. Let us recall that if the linear assumptions are met (see below),
+To prevent confounding variables we analysed the possible association of `vitamin D`, `iron` and `ferritin` to the variables `age` or `weight` by testing H0: _"the slope of the regression line = 0 for each group and variable"_. Let us recall that if the linear assumptions are met (see below),
 \[\Xi = \dfrac{b_1-\beta_1}{\sqrt{\dfrac{MEC}{(n-2)s^2(x)}}} \sim t_{n-2}\]
 where $\beta_1$ is the slope of the linear model $y = \beta_0+\beta_1 x +\varepsilon$ and $b_1$ is its estimate, and $n$ is the sample size.
 
@@ -436,33 +519,38 @@ Cases (groups C1 and C2) are quite a little (19 or 20 individuals) so that norma
 # VITAMIN D
 # C0
 shapiro.test(controls$vitaminD)
-library(nortest)
-lillie.test(controls$vitaminD)
 
 # C1
 shapiro.test(cases_VitD$vitaminD)
-lillie.test(cases_VitD$vitaminD)
 
 # C2
 shapiro.test(cases_VitD$vitaminD2)
-lillie.test(cases_VitD$vitaminD2)
 ```
-Normality is reached for groups C0 and C1, but not for group C2 though the p-value is very close to the significance level. 
 
-Looking at the scatter plot
+Normality is reached for groups C0 and C1, but not for group C2. 
+Let us recall the existence of a strong outlier
 
 ```{r, fig.align='center', fig.height=3}
-boxplot(cases_VitD$vitaminD2)
-# include ptos
-3*IQR(cases_VitD$vitaminD2)+quantile(cases_VitD$vitaminD2, probs = .75)
-max(cases_VitD$vitaminD2)
+boxplot(cases_VitD$vitaminD2, horizontal = T)
+stripchart(cases_VitD$vitaminD2, method = "jitter", cex = .5, pch = 19, add = T)
 ```
-the outlier is not a strong outlier, but removing it we would reach normality. Thus,  taking into account this fact, along with the fact that normality is almost reached (see above) we consider that the normality assumption is fulfilled.
+
+We test normality when removing the strong outlier with the Shapiro test 
 
 ```{r, fig.align='center', fig.height=3}
 shapiro.test(cases_VitD$vitaminD2[cases_VitD$vitaminD2!= max(cases_VitD$vitaminD2)])
+```
+
+and also try with the Lilliefors (Kolmogorov-Smirnov) normality test qhen Shapiro's test is significant
+
+```{r, fig.align='center', fig.height=3}
+library(nortest)
 lillie.test(cases_VitD$vitaminD2[cases_VitD$vitaminD2!= max(cases_VitD$vitaminD2)])
 ```
+
+Both tests are either significant and yield p-values cole to the threshold value 0.05. 
+
+We carry on by assuming that normality is not reached in this case. 
 
 
 
@@ -471,15 +559,12 @@ lillie.test(cases_VitD$vitaminD2[cases_VitD$vitaminD2!= max(cases_VitD$vitaminD2
 # IRON
 # C0
 shapiro.test(controls$iron)
-lillie.test(controls$iron)
 
 # C1
 shapiro.test(cases$iron)
-lillie.test(cases$iron)
 
 # C2
 shapiro.test(cases$iron2)
-lillie.test(cases$iron2)
 ```
 
 
@@ -492,7 +577,7 @@ lillie.test(controls$ferritin)
 
 # C1
 shapiro.test(cases$ferritin)
-lillie.test(cases$ferritin)
+
 
 # C2
 shapiro.test(cases$ferritin2)
@@ -502,7 +587,7 @@ lillie.test(cases$ferritin2)
 
 
 
-## Calculations leading to Table 4 in the manuscript
+## Calculations leading to Table 5 in the manuscript
 ### Compare `vitamin D`, `iron` and `ferritin` between groups C1 and C0
 
 
@@ -517,6 +602,7 @@ sd(cases_VitD$vitaminD)
 
 mean(controls$vitaminD)
 sd(controls$vitaminD)
+
 
 
 # IRON C1 vs C0
@@ -546,7 +632,7 @@ sd(controls$ferritin)
 
 
 
-## Calculations leading to Table 5 in the manuscript
+## Calculations leading to Table 6 in the manuscript
 ### Compare Vitamin D, `iron` and Ferrtin between groups C2 and C1
 ```{r}
 # VITAMIN D C1 vs C2
@@ -591,13 +677,20 @@ sd(cases$ferritin2)
 ```
 
 
-## Calculations leading to Table 6 in the manuscript
+## Calculations leading to Table 7 in the manuscript
 ### Compare Vitamin D, `iron` and Ferrtin between groups C2 and C0
 ```{r}
 # VITAMIN D C2 vs C0
 var.test(cases_VitD$vitaminD2, controls$vitaminD, alternative = "two.sided")
 t.test(cases_VitD$vitaminD2, controls$vitaminD, alternative = "two.sided", var.equal = F)
 
+
+library(coin)
+
+dfc2c0 = data.frame(values = c(cases_VitD$vitaminD2, controls$vitaminD),
+                     ind = as.factor                  (c(rep("C2",length(cases_VitD$vitaminD2)),
+                             rep("C0", length(controls$vitaminD)))))
+wilcox_test(values ~ ind, data = dfc2c0, distribution = "exact", conf.int = T)
 
 # IRON C2 vs C0
 var.test(cases$iron2, controls$iron, alternative = "two.sided")
